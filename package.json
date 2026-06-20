@@ -1,0 +1,26 @@
+{
+  "name": "copy-file-macos",
+  "version": "1.0.0",
+  "description": "Obsidian plugin: copy a vault file to the macOS clipboard as a real file object.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "deploy": "npm run build && node deploy.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "macos",
+    "clipboard"
+  ],
+  "author": "tiger",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.20.0",
+    "obsidian": "^1.4.11",
+    "typescript": "^5.3.3"
+  }
+}

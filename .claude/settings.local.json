@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/tiger/Library/Application Support/obsidian/**)",
+      "Bash(npm -v)",
+      "Bash(npm install *)",
+      "Bash(npm run *)"
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "ob-super-copy",
+  "name": "Super Copy",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Copy a vault file to the macOS clipboard as a real file object, so you can paste it (Cmd+V) into Finder and other apps. macOS desktop only.",
+  "author": "tiger",
+  "isDesktopOnly": true
+}

@@ -1,0 +1,68 @@
+/* Hover action buttons injected into File Explorer rows (files & folders). */
+
+/* Anchor for the absolutely-positioned button group. */
+.nav-file-title,
+.nav-folder-title {
+	position: relative;
+}
+
+/*
+ * The button group floats over the right edge of the row instead of sitting in
+ * the flex flow, so it never changes the row's height or width — the row keeps
+ * its native size while buttons stay comfortably clickable. z-index keeps the
+ * buttons above the filename text so clicks always land on the buttons.
+ */
+.cfm-actions {
+	position: absolute;
+	top: 0;
+	right: 4px;
+	bottom: 0;
+	z-index: 1;
+	display: none;
+	align-items: center;
+	gap: 2px;
+}
+
+/* Reveal the buttons only when the row is hovered (highlighted). */
+.nav-file-title:hover .cfm-actions,
+.nav-folder-title:hover .cfm-actions {
+	display: flex;
+}
+
+/*
+ * On hover, reserve room on the right of the filename so it truncates with an
+ * ellipsis BEFORE the buttons — text and buttons never overlap. Sized for the
+ * worst case of two buttons; single-button rows just get a little extra gap.
+ */
+.nav-file-title:hover .nav-file-title-content,
+.nav-folder-title:hover .nav-folder-title-content {
+	padding-right: 58px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cfm-action-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 3px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.cfm-action-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.cfm-action-btn svg {
+	width: 15px;
+	height: 15px;
+}
