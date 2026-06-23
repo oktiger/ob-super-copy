@@ -4,7 +4,7 @@ import process from "process";
 
 // Where to install the plugin. Override with: VAULT=/path/to/vault npm run deploy
 const VAULT =
-	process.env.VAULT || "/Users/tiger/Documents/TigerSync";
+	process.env.VAULT || "/Users/biem.mini/Documents/TigerSync";
 
 const PLUGIN_ID = "ob-super-copy";
 
