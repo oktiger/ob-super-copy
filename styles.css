@@ -67,34 +67,30 @@
 	height: 15px;
 }
 
-/* Editor content area enhancements. These attach to Obsidian's inner markdown
- * content container, not the whole pane, so title/header and side whitespace stay
- * outside the highlighted content area.
- */
-.cfm-editor-content-background {
+.workspace-leaf-content[data-type="markdown"] .view-content {
 	position: relative;
-	background: var(--background-secondary);
 }
 
-.cfm-content-background-enabled
-	.workspace-leaf-content[data-type="markdown"]
-	.markdown-reading-view
-	.markdown-preview-sizer.cfm-editor-content-background {
-	min-height: calc(100vh - 190px);
+/* Background panel measured by the plugin so it starts below the inline title. */
+.cfm-editor-content-panel {
+	position: absolute;
+	bottom: 0;
+	z-index: 0;
+	display: block;
+	box-sizing: border-box;
+	background: transparent;
+	pointer-events: none;
 }
 
-.cfm-content-background-enabled
-	.workspace-leaf-content[data-type="markdown"]
-	.markdown-source-view
-	.cfm-editor-content-background {
-	background: var(--background-secondary);
+.workspace-leaf-content[data-type="markdown"] .markdown-preview-sizer,
+.workspace-leaf-content[data-type="markdown"] .markdown-source-view {
+	position: relative;
+	z-index: 1;
 }
 
 .cfm-editor-copy-btn {
 	position: absolute;
-	top: 8px;
-	right: 8px;
-	z-index: 10;
+	z-index: 20;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
