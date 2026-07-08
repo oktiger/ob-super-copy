@@ -1,17 +1,34 @@
 import {
 	FileSystemAdapter,
 	Menu,
+	MarkdownView,
 	Notice,
 	Platform,
 	Plugin,
+	PluginSettingTab,
+	Setting,
 	TAbstractFile,
 	TFile,
 	TFolder,
 	setIcon,
 } from "obsidian";
-import { execFile } from "child_process";
 
 const OSASCRIPT = "/usr/bin/osascript";
+const SETTINGS_CLASS = "cfm-content-background-enabled";
+
+interface SuperCopySettings {
+	enableExplorerFileCopy: boolean;
+	enableExplorerContentCopy: boolean;
+	enableEditorContentCopyButton: boolean;
+	enableEditorContentBackground: boolean;
+}
+
+const DEFAULT_SETTINGS: SuperCopySettings = {
+	enableExplorerFileCopy: true,
+	enableExplorerContentCopy: true,
+	enableEditorContentCopyButton: true,
+	enableEditorContentBackground: true,
+};
 
 /**
  * AppleScript that writes a real file object (NSURL) onto the macOS general
@@ -37,10 +54,19 @@ const COPY_FILE_APPLESCRIPT = [
 ].join("\n");
 
 export default class CopyFileMacOSPlugin extends Plugin {
+	settings: SuperCopySettings;
+
 	async onload() {
+		await this.loadSettings();
+		this.addSettingTab(new SuperCopySettingTab(this.app, this));
+		this.refreshAllFeatures();
+
 		// Right-click menu item for files in the File Explorer.
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file: TAbstractFile) => {
+				if (!this.settings.enableExplorerFileCopy) {
+					return;
+				}
 				if (!(file instanceof TFile) && !(file instanceof TFolder)) {
 					return;
 				}
@@ -61,6 +87,9 @@ export default class CopyFileMacOSPlugin extends Plugin {
 			id: "copy-current-file",
 			name: "复制当前文件",
 			checkCallback: (checking: boolean) => {
+				if (!this.settings.enableExplorerFileCopy) {
+					return false;
+				}
 				const file = this.app.workspace.getActiveFile();
 				if (!file) {
 					return false;
@@ -87,6 +116,12 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		// first time a row is hovered. Rows are recycled when the tree re-renders,
 		// which discards our buttons with them — re-hovering re-injects, nothing leaks.
 		this.registerDomEvent(document, "pointerover", (evt: PointerEvent) => {
+			if (
+				!this.settings.enableExplorerFileCopy &&
+				!this.settings.enableExplorerContentCopy
+			) {
+				return;
+			}
 			const target = evt.target as HTMLElement | null;
 			const titleEl = target?.closest?.(
 				".nav-file-title, .nav-folder-title"
@@ -103,6 +138,39 @@ export default class CopyFileMacOSPlugin extends Plugin {
 				this.injectRowButtons(titleEl, file);
 			}
 		});
+
+		this.registerEvent(
+			this.app.workspace.on("layout-change", () => {
+				this.refreshEditorEnhancements();
+			})
+		);
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", () => {
+				this.refreshEditorEnhancements();
+			})
+		);
+		this.registerEvent(
+			this.app.workspace.on("file-open", () => {
+				this.refreshEditorEnhancements();
+			})
+		);
+
+		this.app.workspace.onLayoutReady(() => {
+			this.refreshAllFeatures();
+		});
+	}
+
+	async loadSettings(): Promise<void> {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async saveSettings(): Promise<void> {
+		await this.saveData(this.settings);
+	}
+
+	refreshAllFeatures(): void {
+		this.refreshExplorerButtons();
+		this.refreshEditorEnhancements();
 	}
 
 	/** Build the hover button group for one file or folder row. */
@@ -114,15 +182,17 @@ export default class CopyFileMacOSPlugin extends Plugin {
 
 		// Button 1 — copy the file/folder as a real macOS file object. All rows.
 		// `files` (stacked files) reads as "duplicate / copy a file".
-		const label = file instanceof TFolder ? "复制文件夹" : "复制文件";
-		this.makeActionButton(actions, "files", label, () => {
-			void this.copyFileToClipboard(file);
-		});
+		if (this.settings.enableExplorerFileCopy) {
+			const label = file instanceof TFolder ? "复制文件夹" : "复制文件";
+			this.makeActionButton(actions, "files", label, () => {
+				void this.copyFileToClipboard(file);
+			});
+		}
 
 		// Button 2 — copy the document's text content. Markdown documents only;
 		// folders and non-document files only get the copy button.
 		// `copy` (two overlapping squares) is the universal "copy content" icon.
-		if (file instanceof TFile && file.extension === "md") {
+		if (this.settings.enableExplorerContentCopy && this.isTextDocument(file)) {
 			this.makeActionButton(actions, "copy", "复制内容", () => {
 				void this.copyFileContent(file);
 			});
@@ -151,7 +221,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 	private async copyFileContent(file: TFile): Promise<void> {
 		try {
 			const content = await this.app.vault.cachedRead(file);
-			await navigator.clipboard.writeText(content);
+			await this.writeTextToClipboard(content);
 			new Notice(`已复制内容：${file.name}`);
 		} catch (err) {
 			console.error("Copy File (macOS) — copy content failed:", err);
@@ -185,6 +255,11 @@ export default class CopyFileMacOSPlugin extends Plugin {
 
 	private runOsascript(filePath: string): Promise<void> {
 		return new Promise((resolve, reject) => {
+			const execFile = this.getExecFile();
+			if (!execFile) {
+				reject("child_process is not available");
+				return;
+			}
 			execFile(
 				OSASCRIPT,
 				["-e", COPY_FILE_APPLESCRIPT, filePath],
@@ -197,5 +272,185 @@ export default class CopyFileMacOSPlugin extends Plugin {
 				}
 			);
 		});
+	}
+
+	private getExecFile(): typeof import("child_process").execFile | null {
+		const requireFn =
+			(window as unknown as { require?: NodeRequire }).require ??
+			(globalThis as unknown as { require?: NodeRequire }).require;
+		if (!requireFn) {
+			return null;
+		}
+		return requireFn("child_process").execFile;
+	}
+
+	private async writeTextToClipboard(content: string): Promise<void> {
+		if (navigator.clipboard?.writeText) {
+			await navigator.clipboard.writeText(content);
+			return;
+		}
+
+		const textarea = document.body.createEl("textarea", {
+			text: content,
+			attr: { readonly: "true" },
+		});
+		textarea.addClass("cfm-hidden-clipboard-textarea");
+		textarea.select();
+		const copied = document.execCommand("copy");
+		textarea.remove();
+
+		if (!copied) {
+			throw new Error("Clipboard write failed");
+		}
+	}
+
+	private refreshExplorerButtons(): void {
+		document.querySelectorAll(".cfm-actions").forEach((el) => el.remove());
+	}
+
+	private refreshEditorEnhancements(): void {
+		document.body.toggleClass(
+			SETTINGS_CLASS,
+			this.settings.enableEditorContentBackground
+		);
+
+		document
+			.querySelectorAll<HTMLElement>(
+				".workspace-leaf-content[data-type='markdown'] .view-content"
+			)
+			.forEach((contentEl) => {
+				const contentTarget = this.getEditorContentTarget(contentEl);
+				contentEl
+					.querySelectorAll(".cfm-editor-content-background")
+					.forEach((el) => el.removeClass("cfm-editor-content-background"));
+				contentTarget?.toggleClass(
+					"cfm-editor-content-background",
+					this.settings.enableEditorContentBackground
+				);
+
+				const existingButton = contentEl.querySelector(
+					".cfm-editor-copy-btn"
+				);
+				if (!this.settings.enableEditorContentCopyButton || !contentTarget) {
+					existingButton?.remove();
+					return;
+				}
+				if (existingButton?.parentElement === contentTarget) {
+					return;
+				}
+				existingButton?.remove();
+
+				const btn = contentTarget.createEl("button", {
+					cls: "cfm-editor-copy-btn",
+					attr: { "aria-label": "复制当前文档内容" },
+				});
+				setIcon(btn, "copy");
+				btn.addEventListener("click", (evt) => {
+					evt.preventDefault();
+					evt.stopPropagation();
+
+					const file = this.getFileForContentEl(contentEl);
+					if (!file) {
+						new Notice("没有可复制的当前文档");
+						return;
+					}
+					void this.copyFileContent(file);
+				});
+			});
+	}
+
+	private getEditorContentTarget(contentEl: HTMLElement): HTMLElement | null {
+		return contentEl.querySelector<HTMLElement>(
+			[
+				".markdown-preview-sizer",
+				".markdown-source-view.mod-cm6 .cm-contentContainer",
+				".markdown-source-view .cm-contentContainer",
+				".markdown-source-view .cm-sizer",
+			].join(", ")
+		);
+	}
+
+	private getFileForContentEl(contentEl: HTMLElement): TFile | null {
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			if (
+				leaf.view instanceof MarkdownView &&
+				leaf.view.containerEl.contains(contentEl)
+			) {
+				return leaf.view.file;
+			}
+		}
+		return this.app.workspace.getActiveFile();
+	}
+
+	private isTextDocument(file: TAbstractFile): file is TFile {
+		return file instanceof TFile && ["md", "txt"].includes(file.extension);
+	}
+}
+
+class SuperCopySettingTab extends PluginSettingTab {
+	plugin: CopyFileMacOSPlugin;
+
+	constructor(app: CopyFileMacOSPlugin["app"], plugin: CopyFileMacOSPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+
+		containerEl.createEl("h2", { text: "Super Copy 设置" });
+
+		new Setting(containerEl)
+			.setName("Explorer 显示复制文件按钮")
+			.setDesc("在文件列表行和右键菜单中启用复制文件/文件夹。此功能只支持 macOS 桌面版。")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableExplorerFileCopy)
+					.onChange(async (value) => {
+						this.plugin.settings.enableExplorerFileCopy = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllFeatures();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Explorer 显示复制内容按钮")
+			.setDesc("在 Markdown 和 TXT 文件行上显示复制文档文本内容的按钮。")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableExplorerContentCopy)
+					.onChange(async (value) => {
+						this.plugin.settings.enableExplorerContentCopy = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllFeatures();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("文档内容区显示复制按钮")
+			.setDesc("在打开文档的内容区域右上角显示复制全文按钮，不放在标题区域。")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableEditorContentCopyButton)
+					.onChange(async (value) => {
+						this.plugin.settings.enableEditorContentCopyButton = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllFeatures();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("文档内容区浅灰背景")
+			.setDesc("给文档内容区域添加浅灰色背景，与标题区域和周围白色背景区分。")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableEditorContentBackground)
+					.onChange(async (value) => {
+						this.plugin.settings.enableEditorContentBackground = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllFeatures();
+					})
+			);
 	}
 }

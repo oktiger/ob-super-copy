@@ -66,3 +66,64 @@
 	width: 15px;
 	height: 15px;
 }
+
+/* Editor content area enhancements. These attach to Obsidian's inner markdown
+ * content container, not the whole pane, so title/header and side whitespace stay
+ * outside the highlighted content area.
+ */
+.cfm-editor-content-background {
+	position: relative;
+	background: var(--background-secondary);
+}
+
+.cfm-content-background-enabled
+	.workspace-leaf-content[data-type="markdown"]
+	.markdown-reading-view
+	.markdown-preview-sizer.cfm-editor-content-background {
+	min-height: calc(100vh - 190px);
+}
+
+.cfm-content-background-enabled
+	.workspace-leaf-content[data-type="markdown"]
+	.markdown-source-view
+	.cfm-editor-content-background {
+	background: var(--background-secondary);
+}
+
+.cfm-editor-copy-btn {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	z-index: 10;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 5px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.cfm-editor-copy-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.cfm-editor-copy-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
+.cfm-hidden-clipboard-textarea {
+	position: fixed;
+	top: -1000px;
+	left: -1000px;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+}
