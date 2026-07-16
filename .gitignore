@@ -15,6 +15,10 @@ yarn-error.log*
 .idea/
 .vscode/
 *.swp
+.claude/settings.local.json
+
+# Local Obsidian plugin state
+data.json
 
 # Env
 .env

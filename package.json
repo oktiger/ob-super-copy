@@ -1,11 +1,14 @@
 {
-  "name": "copy-file-macos",
+  "name": "ob-super-copy",
   "version": "1.0.0",
-  "description": "Obsidian plugin: copy a vault file to the macOS clipboard as a real file object.",
+  "description": "Copy vault files on macOS, copy note contents, and insert Markdown code blocks.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint .",
+    "check": "npm run lint && npm run build",
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
     "deploy": "npm run build && node deploy.mjs"
   },
   "keywords": [
@@ -16,11 +19,21 @@
   ],
   "author": "tiger",
   "license": "MIT",
+  "homepage": "https://github.com/nobodyliang/ob-super-copy#readme",
+  "bugs": {
+    "url": "https://github.com/nobodyliang/ob-super-copy/issues"
+  },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^20.11.0",
     "builtin-modules": "^3.3.0",
-    "esbuild": "^0.20.0",
-    "obsidian": "^1.4.11",
-    "typescript": "^5.3.3"
+    "esbuild": "^0.25.5",
+    "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.4.1",
+    "globals": "^17.6.0",
+    "jiti": "^2.6.1",
+    "obsidian": "1.12.3",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.59.1"
   }
 }

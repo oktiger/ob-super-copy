@@ -1,9 +1,10 @@
 {
   "id": "ob-super-copy",
   "name": "Super Copy",
-  "version": "1.0.0",
-  "minAppVersion": "1.0.0",
-  "description": "Copy files on macOS desktop and copy document content from the File Explorer or editor content area.",
-  "author": "tiger",
-  "isDesktopOnly": false
+	"version": "1.0.0",
+	"minAppVersion": "1.12.7",
+	"description": "Copy vault files on macOS, copy note contents, and insert Markdown code blocks.",
+	"author": "tiger",
+	"authorUrl": "https://github.com/nobodyliang",
+	"isDesktopOnly": true
 }

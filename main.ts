@@ -1,3 +1,4 @@
+import { execFile } from "child_process";
 import {
 	Editor,
 	FileSystemAdapter,
@@ -197,7 +198,12 @@ export default class CopyFileMacOSPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const savedData: unknown = await this.loadData();
+		const savedSettings =
+			savedData && typeof savedData === "object"
+				? (savedData as Partial<SuperCopySettings>)
+				: {};
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
 	}
 
 	async saveSettings(): Promise<void> {
@@ -291,17 +297,12 @@ export default class CopyFileMacOSPlugin extends Plugin {
 
 	private runOsascript(filePath: string): Promise<void> {
 		return new Promise((resolve, reject) => {
-			const execFile = this.getExecFile();
-			if (!execFile) {
-				reject("child_process is not available");
-				return;
-			}
 			execFile(
 				OSASCRIPT,
 				["-e", COPY_FILE_APPLESCRIPT, filePath],
 				(error, _stdout, stderr) => {
 					if (error) {
-						reject(stderr || error);
+						reject(new Error(stderr || error.message));
 						return;
 					}
 					resolve();
@@ -310,34 +311,11 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		});
 	}
 
-	private getExecFile(): typeof import("child_process").execFile | null {
-		const requireFn =
-			(window as unknown as { require?: NodeRequire }).require ??
-			(globalThis as unknown as { require?: NodeRequire }).require;
-		if (!requireFn) {
-			return null;
-		}
-		return requireFn("child_process").execFile;
-	}
-
 	private async writeTextToClipboard(content: string): Promise<void> {
-		if (navigator.clipboard?.writeText) {
-			await navigator.clipboard.writeText(content);
-			return;
+		if (!navigator.clipboard?.writeText) {
+			throw new Error("Clipboard API is not available");
 		}
-
-		const textarea = document.body.createEl("textarea", {
-			text: content,
-			attr: { readonly: "true" },
-		});
-		textarea.addClass("cfm-hidden-clipboard-textarea");
-		textarea.select();
-		const copied = document.execCommand("copy");
-		textarea.remove();
-
-		if (!copied) {
-			throw new Error("Clipboard write failed");
-		}
+		await navigator.clipboard.writeText(content);
 	}
 
 	private refreshExplorerButtons(): void {
@@ -519,6 +497,8 @@ export default class CopyFileMacOSPlugin extends Plugin {
 	}
 }
 
+// Declarative settings require Obsidian 1.13; keep the compatible imperative API
+// until 1.13 becomes the minimum supported stable version.
 class SuperCopySettingTab extends PluginSettingTab {
 	plugin: CopyFileMacOSPlugin;
 
@@ -531,7 +511,6 @@ class SuperCopySettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Super Copy 设置" });
 		this.createSection(
 			containerEl,
 			"Explorer 操作",
@@ -553,7 +532,7 @@ class SuperCopySettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("显示复制内容按钮")
-			.setDesc("在 Markdown 和 TXT 文件行上显示复制文档文本内容的按钮。")
+			.setDesc("在 Markdown 和纯文本文件行上显示复制文档文本内容的按钮。")
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableExplorerContentCopy)
@@ -604,7 +583,7 @@ class SuperCopySettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("启用代码框插入命令")
-			.setDesc("开启后，在 Hotkeys 里搜索“Super Copy: 插入 Markdown 代码框”，绑定你想用的快捷键。")
+			.setDesc("开启后，在快捷键页面搜索“插入 Markdown 代码框”，绑定你想用的快捷键。")
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableInsertCodeBlockCommand)
