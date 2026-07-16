@@ -14,15 +14,14 @@ import {
 	TFolder,
 	setIcon,
 } from "obsidian";
+import { getTranslation, Translation } from "./i18n";
 
 const OSASCRIPT = "/usr/bin/osascript";
-const SETTINGS_CLASS = "cfm-content-background-enabled";
 
 interface SuperCopySettings {
 	enableExplorerFileCopy: boolean;
 	enableExplorerContentCopy: boolean;
 	enableEditorContentCopyButton: boolean;
-	enableEditorContentBackground: boolean;
 	enableInsertCodeBlockCommand: boolean;
 	defaultCodeBlockLanguage: string;
 }
@@ -31,13 +30,11 @@ const DEFAULT_SETTINGS: SuperCopySettings = {
 	enableExplorerFileCopy: true,
 	enableExplorerContentCopy: true,
 	enableEditorContentCopyButton: true,
-	enableEditorContentBackground: true,
 	enableInsertCodeBlockCommand: true,
 	defaultCodeBlockLanguage: "",
 };
 
 const CODE_BLOCK_LANGUAGE_OPTIONS: Record<string, string> = {
-	"": "普通代码框（不指定语言）",
 	markdown: "Markdown",
 	javascript: "JavaScript",
 	typescript: "TypeScript",
@@ -75,8 +72,11 @@ const COPY_FILE_APPLESCRIPT = [
 
 export default class CopyFileMacOSPlugin extends Plugin {
 	settings: SuperCopySettings;
+	t: Translation;
 
 	async onload() {
+		this.t = getTranslation();
+		this.removeLegacyBackgroundElements();
 		await this.loadSettings();
 		this.addSettingTab(new SuperCopySettingTab(this.app, this));
 		this.refreshAllFeatures();
@@ -90,7 +90,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 				if (!(file instanceof TFile) && !(file instanceof TFolder)) {
 					return;
 				}
-				const title = file instanceof TFolder ? "复制文件夹" : "复制文件";
+				const title = file instanceof TFolder ? this.t.copyFolder : this.t.copyFile;
 				menu.addItem((item) => {
 					item
 						.setTitle(title)
@@ -105,7 +105,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		// Command palette command for the currently active file.
 		this.addCommand({
 			id: "copy-current-file",
-			name: "复制当前文件",
+			name: this.t.copyCurrentFile,
 			checkCallback: (checking: boolean) => {
 				if (!this.settings.enableExplorerFileCopy) {
 					return false;
@@ -123,7 +123,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 
 		this.addCommand({
 			id: "insert-markdown-code-block",
-			name: "插入 Markdown 代码框",
+			name: this.t.insertMarkdownCodeBlock,
 			editorCheckCallback: (checking: boolean, editor: Editor) => {
 				if (!this.settings.enableInsertCodeBlockCommand) {
 					return false;
@@ -210,6 +210,13 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	private removeLegacyBackgroundElements(): void {
+		document.body.removeClass("cfm-content-background-enabled");
+		document
+			.querySelectorAll(".cfm-editor-content-panel")
+			.forEach((panel) => panel.remove());
+	}
+
 	refreshAllFeatures(): void {
 		this.refreshExplorerButtons();
 		this.refreshEditorEnhancements();
@@ -225,7 +232,8 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		// Button 1 — copy the file/folder as a real macOS file object. All rows.
 		// `files` (stacked files) reads as "duplicate / copy a file".
 		if (this.settings.enableExplorerFileCopy) {
-			const label = file instanceof TFolder ? "复制文件夹" : "复制文件";
+			const label =
+				file instanceof TFolder ? this.t.copyFolder : this.t.copyFile;
 			this.makeActionButton(actions, "files", label, () => {
 				void this.copyFileToClipboard(file);
 			});
@@ -235,7 +243,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		// folders and non-document files only get the copy button.
 		// `copy` (two overlapping squares) is the universal "copy content" icon.
 		if (this.settings.enableExplorerContentCopy && this.isTextDocument(file)) {
-			this.makeActionButton(actions, "copy", "复制内容", () => {
+			this.makeActionButton(actions, "copy", this.t.copyContent, () => {
 				void this.copyFileContent(file);
 			});
 		}
@@ -264,34 +272,34 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		try {
 			const content = await this.app.vault.cachedRead(file);
 			await this.writeTextToClipboard(content);
-			new Notice(`已复制内容：${file.name}`);
+			new Notice(this.t.contentCopied(file.name));
 		} catch (err) {
 			console.error("Copy File (macOS) — copy content failed:", err);
-			new Notice(`复制内容失败：${file.name}`);
+			new Notice(this.t.contentCopyFailed(file.name));
 		}
 	}
 
 	private async copyFileToClipboard(file: TFile | TFolder): Promise<void> {
 		if (!Platform.isMacOS || !Platform.isDesktop) {
-			new Notice("“复制文件”仅支持 macOS 桌面版");
+			new Notice(this.t.copyFileMacOnly);
 			return;
 		}
 
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) {
-			new Notice("无法获取文件的本地路径");
+			new Notice(this.t.localPathUnavailable);
 			return;
 		}
 
 		const fullPath = adapter.getFullPath(file.path);
-		const kind = file instanceof TFolder ? "文件夹" : "文件";
+		const kind = file instanceof TFolder ? this.t.folderKind : this.t.fileKind;
 
 		try {
 			await this.runOsascript(fullPath);
-			new Notice(`已复制${kind}：${file.name}`);
+			new Notice(this.t.fileCopied(kind, file.name));
 		} catch (err) {
 			console.error("Copy File (macOS) failed:", err);
-			new Notice(`复制失败：${file.name}`);
+			new Notice(this.t.copyFailed(file.name));
 		}
 	}
 
@@ -341,29 +349,12 @@ export default class CopyFileMacOSPlugin extends Plugin {
 	}
 
 	private refreshEditorEnhancements(): void {
-		document.body.toggleClass(
-			SETTINGS_CLASS,
-			this.settings.enableEditorContentBackground
-		);
-
 		document
 			.querySelectorAll<HTMLElement>(
 				".workspace-leaf-content[data-type='markdown'] .view-content"
 			)
 			.forEach((contentEl) => {
-				contentEl
-					.querySelectorAll(".cfm-editor-content-background")
-					.forEach((el) => el.removeClass("cfm-editor-content-background"));
-
 				const contentBounds = this.getRenderedContentBounds(contentEl);
-				const panel = this.getOrCreateContentPanel(contentEl);
-				if (this.settings.enableEditorContentBackground && contentBounds) {
-					this.applyBounds(panel, contentBounds);
-					panel.show();
-				} else {
-					panel.hide();
-				}
-
 				const existingButton = contentEl.querySelector(
 					".cfm-editor-copy-btn"
 				);
@@ -375,7 +366,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 					(existingButton as HTMLButtonElement | null) ??
 					contentEl.createEl("button", {
 						cls: "cfm-editor-copy-btn",
-						attr: { "aria-label": "复制当前文档内容" },
+						attr: { "aria-label": this.t.copyCurrentDocumentContent },
 					});
 
 				if (!existingButton) {
@@ -386,7 +377,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 
 						const file = this.getFileForContentEl(contentEl);
 						if (!file) {
-							new Notice("没有可复制的当前文档");
+							new Notice(this.t.noCurrentDocument);
 							return;
 						}
 						void this.copyFileContent(file);
@@ -396,22 +387,6 @@ export default class CopyFileMacOSPlugin extends Plugin {
 				btn.style.top = `${contentBounds.top + 8}px`;
 				btn.style.left = `${contentBounds.left + contentBounds.width - 36}px`;
 			});
-	}
-
-	private getOrCreateContentPanel(contentEl: HTMLElement): HTMLElement {
-		return (
-			contentEl.querySelector<HTMLElement>(".cfm-editor-content-panel") ??
-			contentEl.createDiv({ cls: "cfm-editor-content-panel" })
-		);
-	}
-
-	private applyBounds(
-		el: HTMLElement,
-		bounds: { top: number; left: number; width: number }
-	): void {
-		el.style.top = `${bounds.top}px`;
-		el.style.left = `${bounds.left}px`;
-		el.style.width = `${bounds.width}px`;
 	}
 
 	private getRenderedContentBounds(
@@ -509,17 +484,18 @@ class SuperCopySettingTab extends PluginSettingTab {
 
 	display(): void {
 		const { containerEl } = this;
+		const { t } = this.plugin;
 		containerEl.empty();
 
 		this.createSection(
 			containerEl,
-			"Explorer 操作",
-			"控制文件列表里的复制按钮和右键菜单项。"
+			t.explorerActions,
+			t.explorerActionsDesc
 		);
 
 		new Setting(containerEl)
-			.setName("显示复制文件按钮")
-			.setDesc("在文件列表行和右键菜单中启用复制文件/文件夹。此功能只支持 macOS 桌面版。")
+			.setName(t.showCopyFileButton)
+			.setDesc(t.showCopyFileButtonDesc)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableExplorerFileCopy)
@@ -531,8 +507,8 @@ class SuperCopySettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("显示复制内容按钮")
-			.setDesc("在 Markdown 和纯文本文件行上显示复制文档文本内容的按钮。")
+			.setName(t.showCopyContentButton)
+			.setDesc(t.showCopyContentButtonDesc)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableExplorerContentCopy)
@@ -545,13 +521,13 @@ class SuperCopySettingTab extends PluginSettingTab {
 
 		this.createSection(
 			containerEl,
-			"文档内容区",
-			"控制打开文档正文区域里的复制按钮和背景样式。"
+			t.documentContentArea,
+			t.documentContentAreaDesc
 		);
 
 		new Setting(containerEl)
-			.setName("显示复制全文按钮")
-			.setDesc("在打开文档的内容区域右上角显示复制全文按钮，不放在标题区域。")
+			.setName(t.showCopyDocumentButton)
+			.setDesc(t.showCopyDocumentButtonDesc)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableEditorContentCopyButton)
@@ -562,28 +538,15 @@ class SuperCopySettingTab extends PluginSettingTab {
 					})
 			);
 
-		new Setting(containerEl)
-			.setName("显示浅灰正文背景")
-			.setDesc("给文档内容区域添加浅灰色背景，与标题区域和周围白色背景区分。")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableEditorContentBackground)
-					.onChange(async (value) => {
-						this.plugin.settings.enableEditorContentBackground = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllFeatures();
-					})
-			);
-
 		this.createSection(
 			containerEl,
-			"代码框快捷插入",
-			"在编辑器光标处插入 Markdown 代码框，或把选中的文字包进代码框。快捷键请在 Obsidian 的 Hotkeys 页面里设置。"
+			t.codeBlockInsertion,
+			t.codeBlockInsertionDesc
 		);
 
 		new Setting(containerEl)
-			.setName("启用代码框插入命令")
-			.setDesc("开启后，在快捷键页面搜索“插入 Markdown 代码框”，绑定你想用的快捷键。")
+			.setName(t.enableCodeBlockCommand)
+			.setDesc(t.enableCodeBlockCommandDesc)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableInsertCodeBlockCommand)
@@ -594,15 +557,16 @@ class SuperCopySettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("默认代码框类型")
-			.setDesc("选择插入代码框时使用的语言标记。")
+			.setName(t.defaultCodeBlockLanguage)
+			.setDesc(t.defaultCodeBlockLanguageDesc)
 			.addDropdown((dropdown) => {
+				dropdown.addOption("", t.codeBlockPlain);
 				for (const [value, label] of Object.entries(CODE_BLOCK_LANGUAGE_OPTIONS)) {
 					dropdown.addOption(value, label);
 				}
 				const current = this.plugin.settings.defaultCodeBlockLanguage;
-				if (!(current in CODE_BLOCK_LANGUAGE_OPTIONS)) {
-					dropdown.addOption(current, `自定义：${current}`);
+				if (current !== "" && !(current in CODE_BLOCK_LANGUAGE_OPTIONS)) {
+					dropdown.addOption(current, t.customLanguage(current));
 				}
 				dropdown
 					.setValue(current)

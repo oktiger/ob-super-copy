@@ -8,13 +8,17 @@ Super Copy adds faster copy and Markdown editing actions to Obsidian on macOS.
 - Copy the text contents of Markdown and TXT files from the File Explorer.
 - Copy the full contents of the active note from the editor.
 - Insert a fenced Markdown code block around selected text or at the cursor.
-- Optionally add a subtle background panel behind the note content.
+- Automatically match Obsidian's interface language, with English fallback.
+
+## Languages
+
+Super Copy supports English, Simplified Chinese, Traditional Chinese, Japanese, Korean, German, French, Spanish, and Brazilian Portuguese.
 
 ## Usage
 
 ### Copy a file or folder
 
-Hover over an item in the File Explorer and select the files icon, or right-click the item and select **复制文件** or **复制文件夹**. You can also run **Super Copy: 复制当前文件** from the command palette.
+Hover over an item in the File Explorer and select the files icon, or right-click the item and select **Copy file** or **Copy folder**. You can also run **Super Copy: Copy current file** from the command palette. Command and menu names are translated to match Obsidian's interface language.
 
 The copied item can be pasted into Finder or any macOS app that accepts file objects.
 
@@ -24,7 +28,7 @@ Select the copy icon beside a Markdown or TXT file in the File Explorer, or use 
 
 ### Insert a code block
 
-Run **Super Copy: 插入 Markdown 代码框** from the command palette. To assign a keyboard shortcut, open **Settings → Hotkeys** and search for the command.
+Run **Super Copy: Insert Markdown code block** from the command palette. To assign a keyboard shortcut, open **Settings → Hotkeys** and search for the command.
 
 The default code block language and each feature can be changed under **Settings → Community plugins → Super Copy**.
 

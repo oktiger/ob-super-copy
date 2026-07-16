@@ -71,23 +71,6 @@
 	position: relative;
 }
 
-/* Background panel measured by the plugin so it starts below the inline title. */
-.cfm-editor-content-panel {
-	position: absolute;
-	bottom: 0;
-	z-index: 0;
-	display: block;
-	box-sizing: border-box;
-	background: transparent;
-	pointer-events: none;
-}
-
-.workspace-leaf-content[data-type="markdown"] .markdown-preview-sizer,
-.workspace-leaf-content[data-type="markdown"] .markdown-source-view {
-	position: relative;
-	z-index: 1;
-}
-
 .cfm-editor-copy-btn {
 	position: absolute;
 	z-index: 20;
