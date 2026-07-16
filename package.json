@@ -1,6 +1,6 @@
 {
   "name": "ob-super-copy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Copy vault files on macOS, copy note contents, and insert Markdown code blocks.",
   "main": "main.js",
   "scripts": {
@@ -19,9 +19,9 @@
   ],
   "author": "tiger",
   "license": "MIT",
-  "homepage": "https://github.com/nobodyliang/ob-super-copy#readme",
+  "homepage": "https://github.com/oktiger/ob-super-copy#readme",
   "bugs": {
-    "url": "https://github.com/nobodyliang/ob-super-copy/issues"
+    "url": "https://github.com/oktiger/ob-super-copy/issues"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
