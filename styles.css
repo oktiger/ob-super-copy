@@ -31,12 +31,12 @@
 
 /*
  * On hover, reserve room on the right of the filename so it truncates with an
- * ellipsis BEFORE the buttons — text and buttons never overlap. Sized for the
- * worst case of two buttons; single-button rows just get a little extra gap.
+ * ellipsis BEFORE the buttons — text and buttons never overlap. The button
+ * count is set when a row's actions are injected.
  */
 .nav-file-title:hover .nav-file-title-content,
 .nav-folder-title:hover .nav-folder-title-content {
-	padding-right: 58px;
+	padding-right: calc(10px + var(--cfm-action-count, 2) * 24px);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;

@@ -6,6 +6,8 @@ Super Copy adds faster copy and Markdown editing actions to Obsidian on macOS.
 
 - Copy a file or folder from the File Explorer as a native macOS file object, ready to paste into Finder or another app.
 - Copy the text contents of Markdown and TXT files from the File Explorer.
+- Copy relative vault paths for files and folders, and local absolute paths on macOS.
+- Create a blank Markdown file directly inside a folder from the File Explorer.
 - Copy the full contents of the active note from the editor.
 - Insert a fenced Markdown code block around selected text or at the cursor.
 - Automatically match Obsidian's interface language, with English fallback.
@@ -25,6 +27,10 @@ The copied item can be pasted into Finder or any macOS app that accepts file obj
 ### Copy note contents
 
 Select the copy icon beside a Markdown or TXT file in the File Explorer, or use the copy button in the active note.
+
+### Copy paths and create files
+
+Hover over a file or folder in the File Explorer to copy its relative path. On macOS, you can also copy its local absolute path. Folder rows include a button for creating a blank Markdown file. Each File Explorer action can be enabled or disabled in **Settings → Community plugins → Super Copy**.
 
 ### Insert a code block
 

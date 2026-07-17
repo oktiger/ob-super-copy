@@ -21,6 +21,9 @@ const OSASCRIPT = "/usr/bin/osascript";
 interface SuperCopySettings {
 	enableExplorerFileCopy: boolean;
 	enableExplorerContentCopy: boolean;
+	enableExplorerNewFile: boolean;
+	enableExplorerRelativePathCopy: boolean;
+	enableExplorerAbsolutePathCopy: boolean;
 	enableEditorContentCopyButton: boolean;
 	enableInsertCodeBlockCommand: boolean;
 	defaultCodeBlockLanguage: string;
@@ -29,6 +32,9 @@ interface SuperCopySettings {
 const DEFAULT_SETTINGS: SuperCopySettings = {
 	enableExplorerFileCopy: true,
 	enableExplorerContentCopy: true,
+	enableExplorerNewFile: true,
+	enableExplorerRelativePathCopy: true,
+	enableExplorerAbsolutePathCopy: true,
 	enableEditorContentCopyButton: true,
 	enableInsertCodeBlockCommand: true,
 	defaultCodeBlockLanguage: "",
@@ -150,12 +156,6 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		// first time a row is hovered. Rows are recycled when the tree re-renders,
 		// which discards our buttons with them — re-hovering re-injects, nothing leaks.
 		this.registerDomEvent(document, "pointerover", (evt: PointerEvent) => {
-			if (
-				!this.settings.enableExplorerFileCopy &&
-				!this.settings.enableExplorerContentCopy
-			) {
-				return;
-			}
 			const target = evt.target as HTMLElement | null;
 			const titleEl = target?.closest?.(
 				".nav-file-title, .nav-folder-title"
@@ -239,6 +239,15 @@ export default class CopyFileMacOSPlugin extends Plugin {
 			});
 		}
 
+		// Folder rows get a quick action for creating a blank Markdown file in
+		// that folder. It is deliberately placed after the copy action so the two
+		// folder-level actions stay together.
+		if (this.settings.enableExplorerNewFile && file instanceof TFolder) {
+			this.makeActionButton(actions, "file-plus", this.t.newFile, () => {
+				void this.createFileInFolder(file);
+			});
+		}
+
 		// Button 2 — copy the document's text content. Markdown documents only;
 		// folders and non-document files only get the copy button.
 		// `copy` (two overlapping squares) is the universal "copy content" icon.
@@ -247,6 +256,23 @@ export default class CopyFileMacOSPlugin extends Plugin {
 				void this.copyFileContent(file);
 			});
 		}
+
+		if (this.settings.enableExplorerRelativePathCopy) {
+			this.makeActionButton(actions, "folder-tree", this.t.copyRelativePath, () => {
+				void this.copyRelativePath(file);
+			});
+		}
+
+		if (this.settings.enableExplorerAbsolutePathCopy) {
+			this.makeActionButton(actions, "file-code-2", this.t.copyAbsolutePath, () => {
+				void this.copyAbsolutePath(file);
+			});
+		}
+
+		titleEl.style.setProperty(
+			"--cfm-action-count",
+			String(actions.childElementCount)
+		);
 	}
 
 	private makeActionButton(
@@ -277,6 +303,63 @@ export default class CopyFileMacOSPlugin extends Plugin {
 			console.error("Copy File (macOS) — copy content failed:", err);
 			new Notice(this.t.contentCopyFailed(file.name));
 		}
+	}
+
+	private async createFileInFolder(folder: TFolder): Promise<void> {
+		const filePath = this.getNewFilePath(folder);
+		try {
+			const file = await this.app.vault.create(filePath, "");
+			new Notice(this.t.fileCreated(file.path));
+		} catch (err) {
+			console.error("Super Copy — create file failed:", err);
+			new Notice(this.t.fileCreateFailed);
+		}
+	}
+
+	private async copyRelativePath(file: TFile | TFolder): Promise<void> {
+		const relativePath = file.path || "/";
+		try {
+			await this.writeTextToClipboard(relativePath);
+			new Notice(this.t.relativePathCopied(relativePath));
+		} catch (err) {
+			console.error("Super Copy — copy relative path failed:", err);
+			new Notice(this.t.pathCopyFailed);
+		}
+	}
+
+	private async copyAbsolutePath(file: TFile | TFolder): Promise<void> {
+		if (!Platform.isMacOS || !Platform.isDesktop) {
+			new Notice(this.t.absolutePathMacOnly);
+			return;
+		}
+
+		const adapter = this.app.vault.adapter;
+		if (!(adapter instanceof FileSystemAdapter)) {
+			new Notice(this.t.localPathUnavailable);
+			return;
+		}
+
+		const absolutePath = adapter.getFullPath(file.path);
+		try {
+			await this.writeTextToClipboard(absolutePath);
+			new Notice(this.t.absolutePathCopied(absolutePath));
+		} catch (err) {
+			console.error("Super Copy — copy absolute path failed:", err);
+			new Notice(this.t.pathCopyFailed);
+		}
+	}
+
+	private getNewFilePath(folder: TFolder): string {
+		const basePath = folder.path ? `${folder.path}/Untitled` : "Untitled";
+		let suffix = 0;
+		let filePath = `${basePath}.md`;
+
+		while (this.app.vault.getAbstractFileByPath(filePath)) {
+			suffix += 1;
+			filePath = `${basePath} ${suffix}.md`;
+		}
+
+		return filePath;
 	}
 
 	private async copyFileToClipboard(file: TFile | TFolder): Promise<void> {
@@ -514,6 +597,45 @@ class SuperCopySettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.enableExplorerContentCopy)
 					.onChange(async (value) => {
 						this.plugin.settings.enableExplorerContentCopy = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllFeatures();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t.showNewFileButton)
+			.setDesc(t.showNewFileButtonDesc)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableExplorerNewFile)
+					.onChange(async (value) => {
+						this.plugin.settings.enableExplorerNewFile = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllFeatures();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t.showCopyRelativePathButton)
+			.setDesc(t.showCopyRelativePathButtonDesc)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableExplorerRelativePathCopy)
+					.onChange(async (value) => {
+						this.plugin.settings.enableExplorerRelativePathCopy = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllFeatures();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t.showCopyAbsolutePathButton)
+			.setDesc(t.showCopyAbsolutePathButtonDesc)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableExplorerAbsolutePathCopy)
+					.onChange(async (value) => {
+						this.plugin.settings.enableExplorerAbsolutePathCopy = value;
 						await this.plugin.saveSettings();
 						this.plugin.refreshAllFeatures();
 					})
