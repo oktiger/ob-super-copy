@@ -30,7 +30,7 @@ Select the copy icon beside a Markdown or TXT file in the File Explorer, or use 
 
 ### Copy paths and create files
 
-Hover over a file or folder in the File Explorer to copy its relative path. On macOS, you can also copy its local absolute path. Folder rows include a button for creating a blank Markdown file. Each File Explorer action can be enabled or disabled in **Settings → Community plugins → Super Copy**.
+Hover over a file or folder in the File Explorer to copy its relative path. On macOS, you can also copy its local absolute path. Folder rows include a button for creating a blank Markdown file. In **Settings → Community plugins → Super Copy**, each action can be enabled or disabled separately for folders, Markdown files, plain-text files, and other attachments.
 
 ### Insert a code block
 

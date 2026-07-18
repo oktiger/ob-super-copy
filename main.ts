@@ -18,23 +18,92 @@ import { getTranslation, Translation } from "./i18n";
 
 const OSASCRIPT = "/usr/bin/osascript";
 
+const EXPLORER_OBJECT_TYPES = ["folder", "markdown", "text", "other"] as const;
+const EXPLORER_ACTIONS = [
+	"copyFile",
+	"addNew",
+	"copyRelativePath",
+	"copyAbsolutePath",
+	"copyContent",
+] as const;
+
+type ExplorerObjectType = (typeof EXPLORER_OBJECT_TYPES)[number];
+type ExplorerAction = (typeof EXPLORER_ACTIONS)[number];
+type ExplorerActionVisibility = Record<
+	ExplorerObjectType,
+	Record<ExplorerAction, boolean>
+>;
+
+const SUPPORTED_EXPLORER_ACTIONS: Record<
+	ExplorerObjectType,
+	readonly ExplorerAction[]
+> = {
+	folder: ["copyFile", "addNew", "copyRelativePath", "copyAbsolutePath"],
+	markdown: [
+		"copyFile",
+		"copyRelativePath",
+		"copyAbsolutePath",
+		"copyContent",
+	],
+	text: [
+		"copyFile",
+		"copyRelativePath",
+		"copyAbsolutePath",
+		"copyContent",
+	],
+	other: ["copyFile", "copyRelativePath", "copyAbsolutePath"],
+};
+
 interface SuperCopySettings {
-	enableExplorerFileCopy: boolean;
-	enableExplorerContentCopy: boolean;
-	enableExplorerNewFile: boolean;
-	enableExplorerRelativePathCopy: boolean;
-	enableExplorerAbsolutePathCopy: boolean;
+	explorerActionVisibility: ExplorerActionVisibility;
 	enableEditorContentCopyButton: boolean;
 	enableInsertCodeBlockCommand: boolean;
 	defaultCodeBlockLanguage: string;
 }
 
+interface LegacyExplorerSettings {
+	enableExplorerFileCopy?: boolean;
+	enableExplorerContentCopy?: boolean;
+	enableExplorerNewFile?: boolean;
+	enableExplorerRelativePathCopy?: boolean;
+	enableExplorerAbsolutePathCopy?: boolean;
+}
+
+function createDefaultExplorerActionVisibility(): ExplorerActionVisibility {
+	return {
+		folder: {
+			copyFile: true,
+			addNew: true,
+			copyRelativePath: false,
+			copyAbsolutePath: false,
+			copyContent: false,
+		},
+		markdown: {
+			copyFile: true,
+			addNew: false,
+			copyRelativePath: false,
+			copyAbsolutePath: false,
+			copyContent: true,
+		},
+		text: {
+			copyFile: true,
+			addNew: false,
+			copyRelativePath: false,
+			copyAbsolutePath: false,
+			copyContent: true,
+		},
+		other: {
+			copyFile: true,
+			addNew: false,
+			copyRelativePath: false,
+			copyAbsolutePath: false,
+			copyContent: false,
+		},
+	};
+}
+
 const DEFAULT_SETTINGS: SuperCopySettings = {
-	enableExplorerFileCopy: true,
-	enableExplorerContentCopy: true,
-	enableExplorerNewFile: true,
-	enableExplorerRelativePathCopy: true,
-	enableExplorerAbsolutePathCopy: true,
+	explorerActionVisibility: createDefaultExplorerActionVisibility(),
 	enableEditorContentCopyButton: true,
 	enableInsertCodeBlockCommand: true,
 	defaultCodeBlockLanguage: "",
@@ -90,9 +159,6 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		// Right-click menu item for files in the File Explorer.
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file: TAbstractFile) => {
-				if (!this.settings.enableExplorerFileCopy) {
-					return;
-				}
 				if (!(file instanceof TFile) && !(file instanceof TFolder)) {
 					return;
 				}
@@ -113,9 +179,6 @@ export default class CopyFileMacOSPlugin extends Plugin {
 			id: "copy-current-file",
 			name: this.t.copyCurrentFile,
 			checkCallback: (checking: boolean) => {
-				if (!this.settings.enableExplorerFileCopy) {
-					return false;
-				}
 				const file = this.app.workspace.getActiveFile();
 				if (!file) {
 					return false;
@@ -201,9 +264,21 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		const savedData: unknown = await this.loadData();
 		const savedSettings =
 			savedData && typeof savedData === "object"
-				? (savedData as Partial<SuperCopySettings>)
+				? (savedData as Partial<SuperCopySettings> & LegacyExplorerSettings)
 				: {};
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
+		this.settings = {
+			explorerActionVisibility:
+				this.normalizeExplorerActionVisibility(savedSettings),
+			enableEditorContentCopyButton:
+				savedSettings.enableEditorContentCopyButton ??
+				DEFAULT_SETTINGS.enableEditorContentCopyButton,
+			enableInsertCodeBlockCommand:
+				savedSettings.enableInsertCodeBlockCommand ??
+				DEFAULT_SETTINGS.enableInsertCodeBlockCommand,
+			defaultCodeBlockLanguage:
+				savedSettings.defaultCodeBlockLanguage ??
+				DEFAULT_SETTINGS.defaultCodeBlockLanguage,
+		};
 	}
 
 	async saveSettings(): Promise<void> {
@@ -222,6 +297,61 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		this.refreshEditorEnhancements();
 	}
 
+	private normalizeExplorerActionVisibility(
+		savedSettings: Partial<SuperCopySettings> & LegacyExplorerSettings
+	): ExplorerActionVisibility {
+		const visibility = createDefaultExplorerActionVisibility();
+		const savedVisibility = savedSettings.explorerActionVisibility;
+		const legacyActionValues: Record<ExplorerAction, boolean | undefined> = {
+			copyFile: savedSettings.enableExplorerFileCopy,
+			addNew: savedSettings.enableExplorerNewFile,
+			copyRelativePath: savedSettings.enableExplorerRelativePathCopy,
+			copyAbsolutePath: savedSettings.enableExplorerAbsolutePathCopy,
+			copyContent: savedSettings.enableExplorerContentCopy,
+		};
+
+		for (const objectType of EXPLORER_OBJECT_TYPES) {
+			for (const action of EXPLORER_ACTIONS) {
+				if (!this.isExplorerActionSupported(objectType, action)) {
+					visibility[objectType][action] = false;
+					continue;
+				}
+
+				const savedValue = savedVisibility?.[objectType]?.[action];
+				if (typeof savedValue === "boolean") {
+					visibility[objectType][action] = savedValue;
+				} else if (typeof legacyActionValues[action] === "boolean") {
+					visibility[objectType][action] = legacyActionValues[action];
+				}
+			}
+		}
+
+		return visibility;
+	}
+
+	isExplorerActionSupported(
+		objectType: ExplorerObjectType,
+		action: ExplorerAction
+	): boolean {
+		return SUPPORTED_EXPLORER_ACTIONS[objectType].includes(action);
+	}
+
+	getExplorerObjectType(file: TFile | TFolder): ExplorerObjectType {
+		if (file instanceof TFolder) return "folder";
+		if (file.extension === "md") return "markdown";
+		if (file.extension === "txt") return "text";
+		return "other";
+	}
+
+	private isExplorerActionEnabled(
+		file: TFile | TFolder,
+		action: ExplorerAction
+	): boolean {
+		return this.settings.explorerActionVisibility[
+			this.getExplorerObjectType(file)
+		][action];
+	}
+
 	/** Build the hover button group for one file or folder row. */
 	private injectRowButtons(
 		titleEl: HTMLElement,
@@ -231,7 +361,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 
 		// Button 1 — copy the file/folder as a real macOS file object. All rows.
 		// `files` (stacked files) reads as "duplicate / copy a file".
-		if (this.settings.enableExplorerFileCopy) {
+		if (this.isExplorerActionEnabled(file, "copyFile")) {
 			const label =
 				file instanceof TFolder ? this.t.copyFolder : this.t.copyFile;
 			this.makeActionButton(actions, "files", label, () => {
@@ -242,7 +372,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		// Folder rows get a quick action for creating a blank Markdown file in
 		// that folder. It is deliberately placed after the copy action so the two
 		// folder-level actions stay together.
-		if (this.settings.enableExplorerNewFile && file instanceof TFolder) {
+		if (this.isExplorerActionEnabled(file, "addNew") && file instanceof TFolder) {
 			this.makeActionButton(actions, "file-plus", this.t.newFile, () => {
 				void this.createFileInFolder(file);
 			});
@@ -251,19 +381,22 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		// Button 2 — copy the document's text content. Markdown documents only;
 		// folders and non-document files only get the copy button.
 		// `copy` (two overlapping squares) is the universal "copy content" icon.
-		if (this.settings.enableExplorerContentCopy && this.isTextDocument(file)) {
+		if (
+			this.isExplorerActionEnabled(file, "copyContent") &&
+			this.isTextDocument(file)
+		) {
 			this.makeActionButton(actions, "copy", this.t.copyContent, () => {
 				void this.copyFileContent(file);
 			});
 		}
 
-		if (this.settings.enableExplorerRelativePathCopy) {
+		if (this.isExplorerActionEnabled(file, "copyRelativePath")) {
 			this.makeActionButton(actions, "folder-tree", this.t.copyRelativePath, () => {
 				void this.copyRelativePath(file);
 			});
 		}
 
-		if (this.settings.enableExplorerAbsolutePathCopy) {
+		if (this.isExplorerActionEnabled(file, "copyAbsolutePath")) {
 			this.makeActionButton(actions, "file-code-2", this.t.copyAbsolutePath, () => {
 				void this.copyAbsolutePath(file);
 			});
@@ -411,6 +544,9 @@ export default class CopyFileMacOSPlugin extends Plugin {
 
 	private refreshExplorerButtons(): void {
 		document.querySelectorAll(".cfm-actions").forEach((el) => el.remove());
+		document
+			.querySelectorAll<HTMLElement>(".nav-file-title, .nav-folder-title")
+			.forEach((el) => el.style.removeProperty("--cfm-action-count"));
 	}
 
 	private insertMarkdownCodeBlock(editor: Editor): void {
@@ -576,69 +712,24 @@ class SuperCopySettingTab extends PluginSettingTab {
 			t.explorerActionsDesc
 		);
 
-		new Setting(containerEl)
-			.setName(t.showCopyFileButton)
-			.setDesc(t.showCopyFileButtonDesc)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableExplorerFileCopy)
-					.onChange(async (value) => {
-						this.plugin.settings.enableExplorerFileCopy = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllFeatures();
-					})
-			);
+		this.createExplorerActionMatrix(containerEl);
+		containerEl.createDiv({
+			cls: "cfm-settings-platform-note",
+			text: t.explorerMacOnlyNote,
+		});
 
 		new Setting(containerEl)
-			.setName(t.showCopyContentButton)
-			.setDesc(t.showCopyContentButtonDesc)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableExplorerContentCopy)
-					.onChange(async (value) => {
-						this.plugin.settings.enableExplorerContentCopy = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllFeatures();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t.showNewFileButton)
-			.setDesc(t.showNewFileButtonDesc)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableExplorerNewFile)
-					.onChange(async (value) => {
-						this.plugin.settings.enableExplorerNewFile = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllFeatures();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t.showCopyRelativePathButton)
-			.setDesc(t.showCopyRelativePathButtonDesc)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableExplorerRelativePathCopy)
-					.onChange(async (value) => {
-						this.plugin.settings.enableExplorerRelativePathCopy = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllFeatures();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t.showCopyAbsolutePathButton)
-			.setDesc(t.showCopyAbsolutePathButtonDesc)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableExplorerAbsolutePathCopy)
-					.onChange(async (value) => {
-						this.plugin.settings.enableExplorerAbsolutePathCopy = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllFeatures();
-					})
+			.setName(t.restoreExplorerActions)
+			.setDesc(t.restoreExplorerActionsDesc)
+			.addButton((button) =>
+				button.setButtonText(t.restoreDefaults).onClick(async () => {
+					this.plugin.settings.explorerActionVisibility =
+						createDefaultExplorerActionVisibility();
+					await this.plugin.saveSettings();
+					this.plugin.refreshAllFeatures();
+					new Notice(t.explorerActionsRestored);
+					this.display();
+				})
 			);
 
 		this.createSection(
@@ -697,6 +788,194 @@ class SuperCopySettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
+	}
+
+	private createExplorerActionMatrix(containerEl: HTMLElement): void {
+		const { t } = this.plugin;
+		const wrapper = containerEl.createDiv({ cls: "cfm-settings-matrix-wrap" });
+		const table = wrapper.createEl("table", { cls: "cfm-settings-matrix" });
+		const headerRow = table.createEl("thead").createEl("tr");
+		headerRow.createEl("th", {
+			text: t.explorerObjectType,
+			attr: { scope: "col" },
+		});
+
+		const headerCheckboxes = new Map<ExplorerAction, HTMLInputElement>();
+		const cellCheckboxes = new Map<
+			ExplorerAction,
+			Map<ExplorerObjectType, HTMLInputElement>
+		>();
+
+		for (const action of EXPLORER_ACTIONS) {
+			cellCheckboxes.set(action, new Map());
+			const headerCell = headerRow.createEl("th", { attr: { scope: "col" } });
+			const isAvailable = this.isExplorerActionAvailableOnPlatform(action);
+			headerCell.createDiv({
+				cls: "cfm-settings-matrix-heading",
+				text: this.getExplorerActionLabel(action),
+			});
+			const checkboxLabel = headerCell.createEl("label", {
+				cls: "cfm-settings-checkbox-hitbox",
+				attr: {
+					title: isAvailable
+						? t.toggleAllAction(this.getExplorerActionLabel(action))
+						: t.explorerMacOnlyNote,
+				},
+			});
+			const checkbox = checkboxLabel.createEl("input", {
+				attr: {
+					type: "checkbox",
+					"aria-label": t.toggleAllAction(
+						this.getExplorerActionLabel(action)
+					),
+				},
+			});
+			checkbox.disabled = !isAvailable;
+			headerCheckboxes.set(action, checkbox);
+			checkbox.addEventListener("change", () => {
+				void this.setExplorerActionColumn(
+					action,
+					checkbox.checked,
+					cellCheckboxes,
+					headerCheckboxes
+				);
+			});
+		}
+
+		const body = table.createEl("tbody");
+		for (const objectType of EXPLORER_OBJECT_TYPES) {
+			const row = body.createEl("tr");
+			row.createEl("th", {
+				text: this.getExplorerObjectTypeLabel(objectType),
+				attr: { scope: "row" },
+			});
+
+			for (const action of EXPLORER_ACTIONS) {
+				const cell = row.createEl("td");
+				if (!this.plugin.isExplorerActionSupported(objectType, action)) {
+					cell.createSpan({
+						cls: "cfm-settings-unavailable",
+						text: "-",
+						attr: { title: t.actionUnavailable },
+					});
+					continue;
+				}
+
+				const actionLabel = this.getExplorerActionLabel(action);
+				const objectLabel = this.getExplorerObjectTypeLabel(objectType);
+				const isAvailable = this.isExplorerActionAvailableOnPlatform(action);
+				const label = cell.createEl("label", {
+					cls: "cfm-settings-checkbox-hitbox",
+					attr: {
+						title: isAvailable
+							? t.toggleActionForObject(actionLabel, objectLabel)
+							: t.explorerMacOnlyNote,
+					},
+				});
+				const checkbox = label.createEl("input", {
+					attr: {
+						type: "checkbox",
+						"aria-label": t.toggleActionForObject(
+							actionLabel,
+							objectLabel
+						),
+					},
+				});
+				checkbox.checked =
+					this.plugin.settings.explorerActionVisibility[objectType][action];
+				checkbox.disabled = !isAvailable;
+				cellCheckboxes.get(action)?.set(objectType, checkbox);
+				checkbox.addEventListener("change", () => {
+					this.plugin.settings.explorerActionVisibility[objectType][action] =
+						checkbox.checked;
+					this.syncExplorerActionColumnHeader(action, headerCheckboxes);
+					void this.persistExplorerActionVisibility();
+				});
+			}
+		}
+
+		for (const action of EXPLORER_ACTIONS) {
+			this.syncExplorerActionColumnHeader(action, headerCheckboxes);
+		}
+	}
+
+	private async setExplorerActionColumn(
+		action: ExplorerAction,
+		enabled: boolean,
+		cellCheckboxes: Map<
+			ExplorerAction,
+			Map<ExplorerObjectType, HTMLInputElement>
+		>,
+		headerCheckboxes: Map<ExplorerAction, HTMLInputElement>
+	): Promise<void> {
+		for (const objectType of EXPLORER_OBJECT_TYPES) {
+			if (!this.plugin.isExplorerActionSupported(objectType, action)) continue;
+			this.plugin.settings.explorerActionVisibility[objectType][action] = enabled;
+			const checkbox = cellCheckboxes.get(action)?.get(objectType);
+			if (checkbox) checkbox.checked = enabled;
+		}
+		this.syncExplorerActionColumnHeader(action, headerCheckboxes);
+		await this.persistExplorerActionVisibility();
+	}
+
+	private syncExplorerActionColumnHeader(
+		action: ExplorerAction,
+		headerCheckboxes: Map<ExplorerAction, HTMLInputElement>
+	): void {
+		const values = EXPLORER_OBJECT_TYPES.filter((objectType) =>
+			this.plugin.isExplorerActionSupported(objectType, action)
+		).map(
+			(objectType) =>
+				this.plugin.settings.explorerActionVisibility[objectType][action]
+		);
+		const checkbox = headerCheckboxes.get(action);
+		if (!checkbox) return;
+		checkbox.checked = values.every(Boolean);
+		checkbox.indeterminate = values.some(Boolean) && !values.every(Boolean);
+	}
+
+	private async persistExplorerActionVisibility(): Promise<void> {
+		await this.plugin.saveSettings();
+		this.plugin.refreshAllFeatures();
+	}
+
+	private getExplorerActionLabel(action: ExplorerAction): string {
+		const { t } = this.plugin;
+		switch (action) {
+			case "copyFile":
+				return t.copyFile;
+			case "addNew":
+				return t.newFile;
+			case "copyRelativePath":
+				return t.copyRelativePath;
+			case "copyAbsolutePath":
+				return t.copyAbsolutePath;
+			case "copyContent":
+				return t.copyContent;
+		}
+	}
+
+	private isExplorerActionAvailableOnPlatform(
+		action: ExplorerAction
+	): boolean {
+		if (action !== "copyFile" && action !== "copyAbsolutePath") return true;
+		return Platform.isMacOS && Platform.isDesktop;
+	}
+
+	private getExplorerObjectTypeLabel(
+		objectType: ExplorerObjectType
+	): string {
+		const { t } = this.plugin;
+		switch (objectType) {
+			case "folder":
+				return t.explorerFolder;
+			case "markdown":
+				return t.explorerMarkdown;
+			case "text":
+				return t.explorerText;
+			case "other":
+				return t.explorerOtherFiles;
+		}
 	}
 
 	private createSection(
