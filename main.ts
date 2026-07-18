@@ -442,6 +442,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		const filePath = this.getNewFilePath(folder);
 		try {
 			const file = await this.app.vault.create(filePath, "");
+			await this.app.workspace.getLeaf(false).openFile(file);
 			new Notice(this.t.fileCreated(file.path));
 		} catch (err) {
 			console.error("Super Copy — create file failed:", err);
