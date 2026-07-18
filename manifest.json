@@ -1,7 +1,7 @@
 {
   "id": "ob-super-copy",
   "name": "Super Copy",
-	"version": "1.1.2",
+	"version": "1.2.0",
 	"minAppVersion": "1.8.7",
 	"description": "Copy vault files, contents, and paths, create files, and insert Markdown code blocks.",
 	"author": "tiger",

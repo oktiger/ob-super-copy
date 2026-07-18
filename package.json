@@ -1,6 +1,6 @@
 {
   "name": "ob-super-copy",
-	"version": "1.1.2",
+	"version": "1.2.0",
 	"description": "Copy vault files, contents, and paths, create files, and insert Markdown code blocks.",
   "main": "main.js",
   "scripts": {
