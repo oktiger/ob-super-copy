@@ -22,6 +22,7 @@ const EXPLORER_OBJECT_TYPES = ["folder", "markdown", "text", "other"] as const;
 const EXPLORER_ACTIONS = [
 	"copyFile",
 	"addNew",
+	"addNewFolder",
 	"copyRelativePath",
 	"copyAbsolutePath",
 	"copyContent",
@@ -38,7 +39,13 @@ const SUPPORTED_EXPLORER_ACTIONS: Record<
 	ExplorerObjectType,
 	readonly ExplorerAction[]
 > = {
-	folder: ["copyFile", "addNew", "copyRelativePath", "copyAbsolutePath"],
+	folder: [
+		"copyFile",
+		"addNew",
+		"addNewFolder",
+		"copyRelativePath",
+		"copyAbsolutePath",
+	],
 	markdown: [
 		"copyFile",
 		"copyRelativePath",
@@ -74,6 +81,7 @@ function createDefaultExplorerActionVisibility(): ExplorerActionVisibility {
 		folder: {
 			copyFile: true,
 			addNew: true,
+			addNewFolder: true,
 			copyRelativePath: false,
 			copyAbsolutePath: false,
 			copyContent: false,
@@ -81,6 +89,7 @@ function createDefaultExplorerActionVisibility(): ExplorerActionVisibility {
 		markdown: {
 			copyFile: true,
 			addNew: false,
+			addNewFolder: false,
 			copyRelativePath: false,
 			copyAbsolutePath: false,
 			copyContent: true,
@@ -88,6 +97,7 @@ function createDefaultExplorerActionVisibility(): ExplorerActionVisibility {
 		text: {
 			copyFile: true,
 			addNew: false,
+			addNewFolder: false,
 			copyRelativePath: false,
 			copyAbsolutePath: false,
 			copyContent: true,
@@ -95,6 +105,7 @@ function createDefaultExplorerActionVisibility(): ExplorerActionVisibility {
 		other: {
 			copyFile: true,
 			addNew: false,
+			addNewFolder: false,
 			copyRelativePath: false,
 			copyAbsolutePath: false,
 			copyContent: false,
@@ -305,6 +316,7 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		const legacyActionValues: Record<ExplorerAction, boolean | undefined> = {
 			copyFile: savedSettings.enableExplorerFileCopy,
 			addNew: savedSettings.enableExplorerNewFile,
+			addNewFolder: undefined,
 			copyRelativePath: savedSettings.enableExplorerRelativePathCopy,
 			copyAbsolutePath: savedSettings.enableExplorerAbsolutePathCopy,
 			copyContent: savedSettings.enableExplorerContentCopy,
@@ -375,6 +387,15 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		if (this.isExplorerActionEnabled(file, "addNew") && file instanceof TFolder) {
 			this.makeActionButton(actions, "file-plus", this.t.newFile, () => {
 				void this.createFileInFolder(file);
+			});
+		}
+
+		if (
+			this.isExplorerActionEnabled(file, "addNewFolder") &&
+			file instanceof TFolder
+		) {
+			this.makeActionButton(actions, "folder-plus", this.t.newFolder, () => {
+				void this.createFolderInFolder(file);
 			});
 		}
 
@@ -450,6 +471,18 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		}
 	}
 
+	private async createFolderInFolder(parent: TFolder): Promise<void> {
+		const folderPath = this.getNewFolderPath(parent);
+		try {
+			const folder = await this.app.vault.createFolder(folderPath);
+			this.tryStartExplorerRename(folder);
+			new Notice(this.t.folderCreated(folder.path));
+		} catch (err) {
+			console.error("Super Copy — create folder failed:", err);
+			new Notice(this.t.folderCreateFailed);
+		}
+	}
+
 	private async copyRelativePath(file: TFile | TFolder): Promise<void> {
 		const relativePath = file.path || "/";
 		try {
@@ -494,6 +527,29 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		}
 
 		return filePath;
+	}
+
+	private getNewFolderPath(folder: TFolder): string {
+		const basePath = folder.path ? `${folder.path}/Untitled` : "Untitled";
+		let suffix = 0;
+		let folderPath = basePath;
+
+		while (this.app.vault.getAbstractFileByPath(folderPath)) {
+			suffix += 1;
+			folderPath = `${basePath} ${suffix}`;
+		}
+
+		return folderPath;
+	}
+
+	private tryStartExplorerRename(file: TAbstractFile): void {
+		const leaf = this.app.workspace.getLeavesOfType("file-explorer")[0];
+		const view = leaf?.view as
+			| { startRenameFile?: (file: TAbstractFile) => void }
+			| undefined;
+		if (typeof view?.startRenameFile === "function") {
+			view.startRenameFile(file);
+		}
 	}
 
 	private async copyFileToClipboard(file: TFile | TFolder): Promise<void> {
@@ -947,6 +1003,8 @@ class SuperCopySettingTab extends PluginSettingTab {
 				return t.copyFile;
 			case "addNew":
 				return t.newFile;
+			case "addNewFolder":
+				return t.newFolder;
 			case "copyRelativePath":
 				return t.copyRelativePath;
 			case "copyAbsolutePath":
