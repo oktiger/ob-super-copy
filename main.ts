@@ -463,11 +463,27 @@ export default class CopyFileMacOSPlugin extends Plugin {
 		const filePath = this.getNewFilePath(folder);
 		try {
 			const file = await this.app.vault.create(filePath, "");
-			await this.app.workspace.getLeaf(false).openFile(file);
+			await this.openFileInEditor(file);
 			new Notice(this.t.fileCreated(file.path));
 		} catch (err) {
 			console.error("Super Copy — create file failed:", err);
 			new Notice(this.t.fileCreateFailed);
+		}
+	}
+
+	/**
+	 * Open a newly created file in the main editor area.
+	 * `getLeaf(false)` is the active leaf, which is the File Explorer after
+	 * clicking a folder-row button, so it cannot be used here.
+	 */
+	private async openFileInEditor(file: TFile): Promise<void> {
+		const leaf =
+			this.app.workspace.getMostRecentLeaf(this.app.workspace.rootSplit) ??
+			this.app.workspace.getLeaf("tab");
+		await leaf.openFile(file, { active: true });
+		this.app.workspace.setActiveLeaf(leaf, { focus: true });
+		if (leaf.view instanceof MarkdownView) {
+			leaf.view.editor.focus();
 		}
 	}
 
